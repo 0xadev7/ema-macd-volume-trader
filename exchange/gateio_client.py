@@ -554,29 +554,75 @@ class GateIOClient:
                     "limit": limit,
                 }
                 response = requests.get(url, params=params, timeout=10)
+                
+                # Check response status before parsing
+                if response.status_code != 200:
+                    logger.warning(
+                        f"Gate.io API returned status {response.status_code} for {symbol}. "
+                        f"Response: {response.text[:200]}"
+                    )
+                    return []
+                
                 response.raise_for_status()
                 data = response.json()
                 
+                # Validate response
+                if data is None:
+                    logger.warning(f"API returned None for {symbol}")
+                    return []
+                
+                if not isinstance(data, list):
+                    logger.warning(
+                        f"Invalid candle data format for {symbol}: expected list, got {type(data)}. "
+                        f"Data: {str(data)[:200]}"
+                    )
+                    return []
+                
+                if len(data) == 0:
+                    logger.warning(f"Empty candle data list for {symbol}")
+                    return []
+                
                 result = []
                 for candle in data:
-                    candle_data = {
-                        "timestamp": int(candle[0]),
-                        "volume": float(candle[1]),
-                        "close": float(candle[2]),
-                        "high": float(candle[3]),
-                        "low": float(candle[4]),
-                        "open": float(candle[5]),
-                    }
-                    result.append(candle_data)
-                    # Update price cache with latest close price
-                    if candle_data["close"] > 0:
+                    try:
+                        # Gate.io API returns candles as: [timestamp, volume, close, high, low, open]
+                        # Validate candle is a list/array with at least 6 elements
+                        if not isinstance(candle, (list, tuple)) or len(candle) < 6:
+                            logger.debug(f"Skipping invalid candle format: {candle}")
+                            continue
+                        
+                        candle_data = {
+                            "timestamp": int(float(candle[0])),  # timestamp (seconds)
+                            "volume": float(candle[1]),           # volume
+                            "close": float(candle[2]),            # close price
+                            "high": float(candle[3]),             # high price
+                            "low": float(candle[4]),              # low price
+                            "open": float(candle[5]),             # open price
+                        }
+                        
+                        # Validate data is reasonable
+                        if candle_data["close"] <= 0 or candle_data["timestamp"] <= 0:
+                            logger.debug(f"Skipping candle with invalid values: {candle_data}")
+                            continue
+                        
+                        result.append(candle_data)
+                        # Update price cache with latest close price
                         self._last_price_cache[symbol] = candle_data["close"]
+                    except (IndexError, ValueError, TypeError) as e:
+                        logger.warning(f"Error parsing candle data: {candle}, error: {e}")
+                        continue
+                
+                if not result:
+                    logger.warning(f"No valid candles retrieved for {symbol}")
+                else:
+                    logger.debug(f"Retrieved {len(result)} candles for {symbol}")
+                
                 return result
             except requests.exceptions.RequestException as e:
                 logger.warning(f"Network error getting candles for {symbol}: {e}")
                 return []
             except Exception as e:
-                logger.warning(f"Error getting candles in simulation: {e}")
+                logger.warning(f"Error getting candles in simulation for {symbol}: {type(e).__name__}: {e}")
                 return []
         
         try:
