@@ -64,28 +64,121 @@ class EMAMACDVolumeStrategy:
         if df.empty or len(df) < 2:
             return None
         
+        # Get current and previous values for logging
+        current = df.iloc[-1]
+        previous = df.iloc[-2] if len(df) >= 2 else current
+        
+        # Extract indicator values
+        current_price = float(current["close"])
+        ema_fast_current = float(current["ema_fast"]) if pd.notna(current["ema_fast"]) else None
+        ema_slow_current = float(current["ema_slow"]) if pd.notna(current["ema_slow"]) else None
+        ema_fast_previous = float(previous["ema_fast"]) if pd.notna(previous["ema_fast"]) else None
+        ema_slow_previous = float(previous["ema_slow"]) if pd.notna(previous["ema_slow"]) else None
+        
+        macd_current = float(current["macd"]) if pd.notna(current["macd"]) else None
+        macd_signal_current = float(current["macd_signal"]) if pd.notna(current["macd_signal"]) else None
+        macd_histogram_current = float(current["macd_histogram"]) if pd.notna(current["macd_histogram"]) else None
+        macd_histogram_previous = float(previous["macd_histogram"]) if pd.notna(previous["macd_histogram"]) else None
+        
+        volume_current = float(current["volume"]) if pd.notna(current["volume"]) else None
+        volume_sma_current = float(current["volume_sma"]) if pd.notna(current["volume_sma"]) else None
+        
+        # Log indicator values
+        logger.info("=" * 80)
+        logger.info("MARKET ANALYSIS")
+        logger.info("=" * 80)
+        logger.info(f"Price: ${current_price:,.2f}")
+        logger.info(f"Candles analyzed: {len(df)}")
+        logger.info("")
+        logger.info("EMA Indicators:")
+        logger.info(f"  EMA Fast ({Config.EMA_FAST}): ${ema_fast_current:,.2f}" if ema_fast_current else "  EMA Fast: N/A")
+        logger.info(f"  EMA Slow ({Config.EMA_SLOW}): ${ema_slow_current:,.2f}" if ema_slow_current else "  EMA Slow: N/A")
+        if ema_fast_current and ema_slow_current:
+            ema_diff = ema_fast_current - ema_slow_current
+            ema_status = "Fast ABOVE Slow" if ema_diff > 0 else "Fast BELOW Slow"
+            logger.info(f"  EMA Status: {ema_status} (diff: ${abs(ema_diff):,.2f})")
+        logger.info("")
+        logger.info("MACD Indicators:")
+        logger.info(f"  MACD Line: {macd_current:,.2f}" if macd_current is not None else "  MACD Line: N/A")
+        logger.info(f"  Signal Line: {macd_signal_current:,.2f}" if macd_signal_current is not None else "  Signal Line: N/A")
+        logger.info(f"  Histogram (Current): {macd_histogram_current:,.2f}" if macd_histogram_current is not None else "  Histogram: N/A")
+        logger.info(f"  Histogram (Previous): {macd_histogram_previous:,.2f}" if macd_histogram_previous is not None else "  Histogram Previous: N/A")
+        if macd_current is not None and macd_signal_current is not None:
+            macd_status = "MACD ABOVE Signal" if macd_current > macd_signal_current else "MACD BELOW Signal"
+            logger.info(f"  MACD Status: {macd_status}")
+        if macd_histogram_current is not None and macd_histogram_previous is not None:
+            histogram_trend = "INCREASING" if macd_histogram_current > macd_histogram_previous else "DECREASING"
+            logger.info(f"  Histogram Trend: {histogram_trend}")
+        logger.info("")
+        logger.info("Volume Indicators:")
+        logger.info(f"  Current Volume: {volume_current:,.2f}" if volume_current else "  Current Volume: N/A")
+        logger.info(f"  Volume SMA (20): {volume_sma_current:,.2f}" if volume_sma_current else "  Volume SMA: N/A")
+        if volume_current and volume_sma_current:
+            volume_ratio = volume_current / volume_sma_current if volume_sma_current > 0 else 0
+            volume_threshold_met = volume_ratio >= Config.VOLUME_THRESHOLD
+            logger.info(f"  Volume Ratio: {volume_ratio:.2f}x (threshold: {Config.VOLUME_THRESHOLD}x)")
+            logger.info(f"  Volume Status: {'ABOVE threshold' if volume_threshold_met else 'BELOW threshold'}")
+        logger.info("")
+        
         # Detect EMA cross
         ema_signal = detect_ema_cross(df)
         
         if ema_signal is None:
+            logger.info("Signal Check: ❌ NO EMA CROSS detected")
+            logger.info("=" * 80)
             return None
+        
+        logger.info(f"Signal Check: ✅ EMA CROSS detected ({ema_signal.upper()})")
         
         # Confirm with MACD
         macd_confirmed = confirm_with_macd(df, ema_signal)
         if not macd_confirmed:
-            logger.debug("MACD does not confirm signal")
+            logger.info("Signal Check: ❌ MACD does NOT confirm signal")
+            # Explain why MACD failed
+            if ema_signal == "bullish":
+                required_conditions = []
+                if macd_histogram_current is not None and macd_histogram_current <= 0:
+                    required_conditions.append(f"Histogram must be > 0 (currently: {macd_histogram_current:,.2f})")
+                if macd_histogram_current is not None and macd_histogram_previous is not None and macd_histogram_current <= macd_histogram_previous:
+                    required_conditions.append(f"Histogram must be increasing (current: {macd_histogram_current:,.2f}, previous: {macd_histogram_previous:,.2f})")
+                if macd_current is not None and macd_signal_current is not None and macd_current <= macd_signal_current:
+                    required_conditions.append(f"MACD must be > Signal (MACD: {macd_current:,.2f}, Signal: {macd_signal_current:,.2f})")
+                if required_conditions:
+                    logger.info(f"  Reasons: {'; '.join(required_conditions)}")
+            else:  # bearish
+                required_conditions = []
+                if macd_histogram_current is not None and macd_histogram_current >= 0:
+                    required_conditions.append(f"Histogram must be < 0 (currently: {macd_histogram_current:,.2f})")
+                if macd_histogram_current is not None and macd_histogram_previous is not None and macd_histogram_current >= macd_histogram_previous:
+                    required_conditions.append(f"Histogram must be decreasing (current: {macd_histogram_current:,.2f}, previous: {macd_histogram_previous:,.2f})")
+                if macd_current is not None and macd_signal_current is not None and macd_current >= macd_signal_current:
+                    required_conditions.append(f"MACD must be < Signal (MACD: {macd_current:,.2f}, Signal: {macd_signal_current:,.2f})")
+                if required_conditions:
+                    logger.info(f"  Reasons: {'; '.join(required_conditions)}")
+            logger.info("=" * 80)
             return None
+        
+        logger.info("Signal Check: ✅ MACD confirms signal")
         
         # Confirm with volume
         volume_confirmed = confirm_with_volume(df, Config.VOLUME_THRESHOLD)
         if not volume_confirmed:
-            logger.debug("Volume does not confirm signal")
+            logger.info("Signal Check: ❌ Volume does NOT confirm signal")
+            if volume_current and volume_sma_current:
+                volume_ratio = volume_current / volume_sma_current if volume_sma_current > 0 else 0
+                logger.info(
+                    f"  Reason: Volume ratio ({volume_ratio:.2f}x) is below threshold ({Config.VOLUME_THRESHOLD}x)"
+                )
+                logger.info(
+                    f"  Current volume: {volume_current:,.2f}, Required: {volume_sma_current * Config.VOLUME_THRESHOLD:,.2f}"
+                )
+            logger.info("=" * 80)
             return None
         
-        # Get current price
-        current_price = float(df.iloc[-1]["close"])
+        logger.info("Signal Check: ✅ Volume confirms signal")
+        logger.info("=" * 80)
         
-        # Generate signal
+        # Generate signal (current_price already extracted above)
         signal = {
             "action": "buy" if ema_signal == "bullish" else "sell",
             "side": "buy" if ema_signal == "bullish" else "sell",

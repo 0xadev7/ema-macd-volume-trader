@@ -122,22 +122,22 @@ class TradingBot:
                             self.strategy.close_position(close_signal)
                     else:
                         # No position, look for entry signals
+                        # analyze() will log detailed indicator information
                         signal = self.strategy.analyze(candles)
                         
                         if signal:
                             logger.info(
-                                f"Trading signal detected: {signal['action'].upper()} @ {signal['price']:.2f}"
+                                f"✅ TRADING SIGNAL DETECTED: {signal['action'].upper()} @ ${signal['price']:,.2f}"
                             )
                             
                             # Execute trade
                             result = self.strategy.execute_trade(signal)
                             
                             if result:
-                                logger.info("Trade executed successfully")
+                                logger.info("✅ Trade executed successfully")
                             else:
-                                logger.warning("Trade execution failed")
-                        else:
-                            logger.debug("No trading signal at this time")
+                                logger.warning("❌ Trade execution failed")
+                        # Note: analyze() already logs detailed info including why no signal was generated
                     
                     # Log current status
                     logger.info(
