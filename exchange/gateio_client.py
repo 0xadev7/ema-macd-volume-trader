@@ -1,6 +1,9 @@
 """Gate.io API client for futures trading."""
 from typing import Optional, Dict, List
 import time
+import csv
+import os
+from datetime import datetime
 import requests
 from gate_api import ApiClient, Configuration, FuturesApi, FuturesOrder, FuturesAccount
 from gate_api.rest import ApiException
@@ -38,6 +41,120 @@ class GateIOClient:
         self._sim_trades = []
         self._sim_realized_pnl = 0.0
         self._last_price_cache = {}  # Cache last known prices for fallback
+        
+        # CSV logging for simulation mode
+        if self.simulation_mode:
+            self._csv_file_path = self._init_csv_log()
+    
+    def _init_csv_log(self) -> str:
+        """Initialize CSV log file for simulation orders.
+        
+        Returns:
+            Path to the CSV log file
+        """
+        # Create data directory if it doesn't exist
+        os.makedirs("data", exist_ok=True)
+        
+        # Create CSV file with timestamp
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        csv_file_path = f"data/simulation_orders_{timestamp}.csv"
+        
+        # Write header
+        headers = [
+            "timestamp",
+            "order_id",
+            "symbol",
+            "side",
+            "size",
+            "price",
+            "order_type",
+            "position_size_before",
+            "position_size_after",
+            "entry_price",
+            "exit_price",
+            "realized_pnl",
+            "balance_before",
+            "balance_after",
+            "leverage",
+            "trade_type",  # "open", "close", "partial"
+            "notes"
+        ]
+        
+        with open(csv_file_path, "w", newline="", encoding="utf-8") as f:
+            writer = csv.writer(f)
+            writer.writerow(headers)
+        
+        logger.info(f"CSV log initialized: {csv_file_path}")
+        return csv_file_path
+    
+    def _log_order_to_csv(
+        self,
+        order_id: str,
+        symbol: str,
+        side: str,
+        size: float,
+        price: float,
+        order_type: str,
+        position_size_before: float,
+        position_size_after: float,
+        entry_price: float = 0.0,
+        exit_price: float = 0.0,
+        realized_pnl: float = 0.0,
+        balance_before: float = 0.0,
+        balance_after: float = 0.0,
+        trade_type: str = "open",
+        notes: str = "",
+    ):
+        """Log order to CSV file.
+        
+        Args:
+            order_id: Order ID
+            symbol: Trading pair symbol
+            side: "buy" or "sell"
+            size: Order size
+            price: Execution price
+            order_type: Order type (market/limit)
+            position_size_before: Position size before this order
+            position_size_after: Position size after this order
+            entry_price: Entry price for the position
+            exit_price: Exit price (if closing)
+            realized_pnl: Realized P&L (if closing)
+            balance_before: Account balance before order
+            balance_after: Account balance after order
+            trade_type: Type of trade ("open", "close", "partial")
+            notes: Additional notes
+        """
+        if not self.simulation_mode:
+            return
+        
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        
+        row = [
+            timestamp,
+            order_id,
+            symbol,
+            side.upper(),
+            f"{size:.8f}",
+            f"{price:.2f}",
+            order_type,
+            f"{position_size_before:.8f}",
+            f"{position_size_after:.8f}",
+            f"{entry_price:.2f}" if entry_price > 0 else "",
+            f"{exit_price:.2f}" if exit_price > 0 else "",
+            f"{realized_pnl:.2f}" if realized_pnl != 0 else "",
+            f"{balance_before:.2f}",
+            f"{balance_after:.2f}",
+            str(Config.LEVERAGE),
+            trade_type,
+            notes,
+        ]
+        
+        try:
+            with open(self._csv_file_path, "a", newline="", encoding="utf-8") as f:
+                writer = csv.writer(f)
+                writer.writerow(row)
+        except Exception as e:
+            logger.error(f"Error writing to CSV log: {e}")
         
     def get_account(self) -> Dict:
         """Get futures account balance.
@@ -302,6 +419,7 @@ class GateIOClient:
         }
         
         # Update simulation position
+        position_size_before = 0.0
         if symbol not in self._sim_positions:
             self._sim_positions[symbol] = {
                 "contract": symbol,
@@ -309,8 +427,12 @@ class GateIOClient:
                 "entry_price": 0,
                 "mark_price": current_price,
             }
+        else:
+            position_size_before = self._sim_positions[symbol]["size"]
         
         pos = self._sim_positions[symbol]
+        balance_before = self._sim_balance
+        
         total_value = abs(pos["size"]) * pos["entry_price"] if pos["size"] != 0 else 0
         new_size = pos["size"] + order_result["size"]
         
@@ -323,16 +445,61 @@ class GateIOClient:
                 pnl = -pnl
             self._sim_realized_pnl += pnl
             self._sim_balance += pnl
+            
+            # Log to CSV
+            self._log_order_to_csv(
+                order_id=order_result["id"],
+                symbol=symbol,
+                side=side,
+                size=size,
+                price=current_price,
+                order_type=order_type,
+                position_size_before=position_size_before,
+                position_size_after=0.0,
+                entry_price=entry_price,
+                exit_price=current_price,
+                realized_pnl=pnl,
+                balance_before=balance_before,
+                balance_after=self._sim_balance,
+                trade_type="close",
+                notes="Position closed",
+            )
+            
             logger.info(f"[SIM] Position closed. P&L: ${pnl:.2f}, New Balance: ${self._sim_balance:.2f}")
             del self._sim_positions[symbol]
         else:
             # Update position
-            if pos["size"] == 0 or (pos["size"] > 0 and side == "buy") or (pos["size"] < 0 and side == "sell"):
+            is_opening = pos["size"] == 0
+            is_adding = (pos["size"] > 0 and side == "buy") or (pos["size"] < 0 and side == "sell")
+            
+            if is_opening or is_adding:
                 # Average entry price
                 new_entry = (total_value + abs(order_result["size"]) * current_price) / abs(new_size)
                 pos["entry_price"] = new_entry
             pos["size"] = new_size
             pos["mark_price"] = current_price
+            
+            # Determine trade type
+            trade_type = "open" if is_opening else "partial"
+            
+            # Log to CSV
+            self._log_order_to_csv(
+                order_id=order_result["id"],
+                symbol=symbol,
+                side=side,
+                size=size,
+                price=current_price,
+                order_type=order_type,
+                position_size_before=position_size_before,
+                position_size_after=new_size,
+                entry_price=pos["entry_price"],
+                exit_price=0.0,
+                realized_pnl=0.0,
+                balance_before=balance_before,
+                balance_after=self._sim_balance,
+                trade_type=trade_type,
+                notes="Position opened" if is_opening else "Position added to",
+            )
         
         self._sim_trades.append({
             "time": time.time(),

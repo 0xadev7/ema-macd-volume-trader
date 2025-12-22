@@ -43,6 +43,8 @@ data/
 *.csv
 *.db
 *.sqlite
+# Keep data directory but ignore contents
+!data/.gitkeep
 
 # Testing
 .pytest_cache/

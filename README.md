@@ -13,6 +13,8 @@ A risk-focused Bitcoin futures trading bot using EMA cross signals with MACD and
   - Hard stop loss protection for sudden price dumps (10-15K movements)
   - Position sizing based on profit targets
 - **Simulation Mode**: Test the bot without placing real orders
+  - CSV logging of all orders for analysis
+  - Tracks entry/exit prices, P&L, balances, and more
 - **Gate.io Integration**: Full futures trading API support
 
 ## Project Structure
@@ -175,7 +177,17 @@ python main.py
 
 ## Logs
 
-Logs are saved to `logs/trading_bot_YYYYMMDD.log` for detailed debugging and analysis.
+- **Trading Logs**: Saved to `logs/trading_bot_YYYYMMDD.log` for detailed debugging and analysis
+- **Simulation Orders CSV**: When running in simulation mode, all orders are logged to `data/simulation_orders_YYYYMMDD_HHMMSS.csv` with detailed information including:
+  - Timestamp, order ID, symbol, side, size, price
+  - Position sizes before/after
+  - Entry/exit prices
+  - Realized P&L
+  - Account balances
+  - Trade type (open/close/partial)
+  - Additional notes
+
+The CSV file makes it easy to analyze trading performance, calculate statistics, and review all executed trades.
 
 ## Trading Strategy Details
 
