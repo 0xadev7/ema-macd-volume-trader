@@ -284,7 +284,7 @@ class GateIOClient:
                 if data:
                     t = data[0]
                     ticker_data = {
-                        "contract": t.get("contract"),
+                        "contract": symbol,
                         "last": float(t.get("last", 0)),
                         "mark_price": float(t.get("mark_price", 0)),
                         "index_price": float(t.get("index_price", 0)),
@@ -585,19 +585,13 @@ class GateIOClient:
                 result = []
                 for candle in data:
                     try:
-                        # Gate.io API returns candles as: [timestamp, volume, close, high, low, open]
-                        # Validate candle is a list/array with at least 6 elements
-                        if not isinstance(candle, (list, tuple)) or len(candle) < 6:
-                            logger.debug(f"Skipping invalid candle format: {candle}")
-                            continue
-                        
                         candle_data = {
-                            "timestamp": int(float(candle[0])),  # timestamp (seconds)
-                            "volume": float(candle[1]),           # volume
-                            "close": float(candle[2]),            # close price
-                            "high": float(candle[3]),             # high price
-                            "low": float(candle[4]),              # low price
-                            "open": float(candle[5]),             # open price
+                            "timestamp": int(float(candle.get("t"))),  # timestamp (seconds)
+                            "volume": float(candle.get("v")),           # volume
+                            "close": float(candle.get("c")),            # close price
+                            "high": float(candle.get("h")),             # high price
+                            "low": float(candle.get("l")),              # low price
+                            "open": float(candle.get("o")),             # open price
                         }
                         
                         # Validate data is reasonable

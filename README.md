@@ -88,6 +88,9 @@ EMA_SLOW=26                 # Slow EMA period
 MACD_FAST=12                # MACD fast period
 MACD_SLOW=26                # MACD slow period
 MACD_SIGNAL=9               # MACD signal period
+
+# Candle interval for analysis
+CANDLE_INTERVAL=15m         # Options: 1m, 5m, 15m, 30m, 1h, 4h, 1d
 ```
 
 ## Risk Management Philosophy
@@ -138,7 +141,7 @@ python main.py
 
 ## How It Works
 
-1. **Data Collection**: Fetches 1-hour candles for analysis (last 200 candles)
+1. **Data Collection**: Fetches candles for analysis (default: 15m interval, last 200 candles)
 
 2. **Signal Detection**:
    - Detects EMA crossover (fast EMA crosses slow EMA)

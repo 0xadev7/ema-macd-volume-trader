@@ -33,6 +33,9 @@ class Config:
     # Volume confirmation (minimum volume increase percentage)
     VOLUME_THRESHOLD = 1.2  # 20% increase in volume
     
+    # Candle interval for analysis (1m, 5m, 15m, 30m, 1h, 4h, 1d)
+    CANDLE_INTERVAL = os.getenv("CANDLE_INTERVAL", "15m")
+    
     @classmethod
     def validate(cls):
         """Validate configuration."""

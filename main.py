@@ -46,6 +46,7 @@ class TradingBot:
         logger.info(f"Leverage: {Config.LEVERAGE}x")
         logger.info(f"Profit Target: ${Config.PROFIT_TARGET_USD:.2f} per trade")
         logger.info(f"Hard Stop Loss: ${Config.HARD_STOP_LOSS_USD:.2f}")
+        logger.info(f"Candle Interval: {Config.CANDLE_INTERVAL}")
         logger.info("=" * 60)
     
     def get_current_price(self) -> Optional[float]:
@@ -55,7 +56,7 @@ class TradingBot:
             return ticker.get("last") or ticker.get("mark_price")
         
         # Fallback: get from latest candle
-        candles = self.client.get_candles(Config.SYMBOL, interval="1h", limit=1)
+        candles = self.client.get_candles(Config.SYMBOL, interval=Config.CANDLE_INTERVAL, limit=1)
         if candles:
             return candles[-1]["close"]
         
@@ -97,7 +98,7 @@ class TradingBot:
                     # Get historical candles for analysis
                     candles = self.client.get_candles(
                         Config.SYMBOL,
-                        interval="1h",  # 1 hour candles
+                        interval=Config.CANDLE_INTERVAL,
                         limit=200,
                     )
                     

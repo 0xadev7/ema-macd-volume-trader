@@ -35,6 +35,9 @@ EMA_SLOW=26
 MACD_FAST=12
 MACD_SLOW=26
 MACD_SIGNAL=9
+
+# Candle interval for analysis (1m, 5m, 15m, 30m, 1h, 4h, 1d)
+CANDLE_INTERVAL=15m
 """
         with open(".env", "w") as f:
             f.write(env_content)
