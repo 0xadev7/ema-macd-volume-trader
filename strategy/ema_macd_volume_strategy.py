@@ -334,8 +334,9 @@ class EMAMACDVolumeStrategy:
             return None
         
         position = self.current_position
-        side = position["side"]
-        position_size = abs(position["size"])
+        # Determine side from position size (positive = long/buy, negative = short/sell)
+        position_size = abs(position.get("size", 0))
+        side = "buy" if position.get("size", 0) > 0 else "sell"
         
         # Close with opposite side
         close_side = "sell" if side == "buy" else "buy"
